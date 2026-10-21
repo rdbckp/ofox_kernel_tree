@@ -1,0 +1,72 @@
+From c8eacecbf89d180a8a5e181cc480bf27edfa8ec6 Mon Sep 17 00:00:00 2001
+From: rdbckp <rdbckp@users.noreply.github.com>
+Date: Wed, 21 Oct 2026 19:51:39 +0000
+Subject: [PATCH] ram_console: last_{init,async,sync}_func jadi uint32_t
+ (samain layout record reset dengan kernel #1, fix reboot di recovery)
+
+---
+ drivers/misc/mediatek/ram_console/mtk_ram_console.c | 6 +++---
+ include/linux/sec_debug.h                           | 6 +++---
+ include/linux/ssdev_in_mtk/sec_debug.h              | 6 +++---
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/misc/mediatek/ram_console/mtk_ram_console.c b/drivers/misc/mediatek/ram_console/mtk_ram_console.c
+index 47544f905..2cbaa5dff 100644
+--- a/drivers/misc/mediatek/ram_console/mtk_ram_console.c
++++ b/drivers/misc/mediatek/ram_console/mtk_ram_console.c
+@@ -205,11 +205,11 @@ struct last_reboot_reason {
+ 	uint8_t ocp_enable;
+ 	uint32_t scp_pc;
+ 	uint32_t scp_lr;
+-	unsigned long last_init_func;
++	uint32_t last_init_func;
+ 	uint8_t pmic_ext_buck;
+ 	uint32_t hang_detect_timeout_count;
+-	unsigned long last_async_func;
+-	unsigned long last_sync_func;
++	uint32_t last_async_func;
++	uint32_t last_sync_func;
+ 	uint32_t gz_irq;
+ };
+ #endif
+diff --git a/include/linux/sec_debug.h b/include/linux/sec_debug.h
+index ce4a24689..4ce046185 100644
+--- a/include/linux/sec_debug.h
++++ b/include/linux/sec_debug.h
+@@ -208,11 +208,11 @@ struct last_reboot_reason {
+ 	uint8_t ocp_enable;
+ 	uint32_t scp_pc;
+ 	uint32_t scp_lr;
+-	unsigned long last_init_func;
++	uint32_t last_init_func;
+ 	uint8_t pmic_ext_buck;
+ 	uint32_t hang_detect_timeout_count;
+-	unsigned long last_async_func;
+-	unsigned long last_sync_func;
++	uint32_t last_async_func;
++	uint32_t last_sync_func;
+ 	uint32_t gz_irq;
+ 
+ 	/* + SEC Feature + */
+diff --git a/include/linux/ssdev_in_mtk/sec_debug.h b/include/linux/ssdev_in_mtk/sec_debug.h
+index 69afb85fd..0ea7b91ee 100644
+--- a/include/linux/ssdev_in_mtk/sec_debug.h
++++ b/include/linux/ssdev_in_mtk/sec_debug.h
+@@ -208,11 +208,11 @@ struct last_reboot_reason {
+ 	uint8_t ocp_enable;
+ 	uint32_t scp_pc;
+ 	uint32_t scp_lr;
+-	unsigned long last_init_func;
++	uint32_t last_init_func;
+ 	uint8_t pmic_ext_buck;
+ 	uint32_t hang_detect_timeout_count;
+-	unsigned long last_async_func;
+-	unsigned long last_sync_func;
++	uint32_t last_async_func;
++	uint32_t last_sync_func;
+ 	uint32_t gz_irq;
+ 
+ 	/* + SEC Feature + */
+-- 
+2.55.0
+
