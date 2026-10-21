@@ -1,0 +1,19 @@
+on init
+    start servicemanager
+    start hwservicemanager
+
+on property:hwservicemanager.ready=true
+    start health-hal-2-1
+
+service servicemanager /system/bin/servicemanager
+    user root
+    group root readproc
+    disabled
+    seclabel u:r:recovery:s0
+
+service hwservicemanager /system/bin/hwservicemanager
+    user root
+    group root readproc
+    onrestart setprop hwservicemanager.ready false
+    disabled
+    seclabel u:r:recovery:s0
