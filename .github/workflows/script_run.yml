@@ -1,0 +1,64 @@
+name: Run build_ofox.sh
+
+on:
+  workflow_dispatch:
+    inputs:
+      FOX_BRANCH:
+        description: 'Branch OrangeFox'
+        required: true
+        default: '12.1'
+      FOX_VERSION:
+        description: 'Label versi OrangeFox'
+        required: true
+        default: 'R12.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Free disk space
+      uses: jlumbroso/free-disk-space@v1.3.1
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: false
+        docker-images: true
+        swap-storage: true
+
+    - name: Siapin folder build di /mnt
+      run: |
+        sudo mkdir -p /mnt/OrangeFox
+        sudo chown "$USER":"$USER" /mnt/OrangeFox
+        df -h /mnt /
+
+    - name: Jalanin build_ofox.sh
+      env:
+        FOX_BRANCH: ${{ inputs.FOX_BRANCH }}
+        FOX_VERSION: ${{ inputs.FOX_VERSION }}
+        FOX_DIR: /mnt/OrangeFox/${{ inputs.FOX_BRANCH }}
+      run: |
+        chmod +x build_ofox.sh
+        ./build_ofox.sh
+
+    - name: Upload OrangeFox
+      uses: actions/upload-artifact@v4
+      with:
+        name: OrangeFox-A02-64bit
+        path: /home/runner/ofox_output/*
+        if-no-files-found: error
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: /home/runner/build_ofox.log
+        if-no-files-found: ignore
