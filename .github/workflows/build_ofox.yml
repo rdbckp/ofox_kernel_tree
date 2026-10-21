@@ -1,0 +1,112 @@
+name: Build OrangeFox (A02 64-bit)
+
+on:
+  workflow_dispatch:
+    inputs:
+      FOX_BRANCH:
+        description: 'OrangeFox branch (11.0 = Android 11)'
+        required: true
+        default: '11.0'
+      FOX_VERSION:
+        description: 'Label versi OrangeFox'
+        required: true
+        default: 'R11.1'
+
+env:
+  DEVICE: a02
+  DEVICE_PATH: device/samsung/a02
+  FOX_DIR: ${{ github.workspace }}/fox
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout device tree
+      uses: actions/checkout@v4
+      with:
+        path: device_tree
+
+    - name: Free disk space
+      uses: jlumbroso/free-disk-space@v1.3.1
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: false
+        docker-images: true
+        swap-storage: true
+
+    - name: Install build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs \
+          gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev \
+          libc6-dev-i386 libgl1-mesa-dev liblz4-tool libncurses5 libncurses5-dev libssl-dev \
+          libxml2 libxml2-utils lzop pngcrush python3 python-is-python3 rsync schedtool \
+          squashfs-tools unzip x11proto-core-dev libx11-dev xsltproc zip zlib1g-dev fontconfig
+        mkdir -p ~/bin
+        curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> "$GITHUB_PATH"
+        git config --global user.name "rdbckp"
+        git config --global user.email "rdbckp@users.noreply.github.com"
+        git config --global color.ui false
+
+    - name: Sync OrangeFox source
+      run: |
+        git clone --depth=1 https://gitlab.com/OrangeFox/sync.git "$HOME/fox-sync"
+        cd "$HOME/fox-sync"
+        ./orangefox_sync.sh --branch "${{ inputs.FOX_BRANCH }}" --path "$FOX_DIR"
+
+    - name: Put device tree in place
+      run: |
+        mkdir -p "$FOX_DIR/$DEVICE_PATH"
+        rsync -a --exclude='.git' --exclude='.github' device_tree/ "$FOX_DIR/$DEVICE_PATH/"
+        ls -la "$FOX_DIR/$DEVICE_PATH" "$FOX_DIR/$DEVICE_PATH/prebuilt"
+
+    - name: Build OrangeFox
+      run: |
+        set +e
+        cd "$FOX_DIR"
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export LC_ALL=C
+        export FOX_VERSION="${{ inputs.FOX_VERSION }}"
+        export FOX_BUILD_TYPE="Unofficial"
+        export OF_MAINTAINER="rdbckp"
+        lunch fox_a02-eng || exit 1
+        mka adbd recoveryimage -j"$(nproc --all)" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
+
+    - name: Collect output
+      run: |
+        OUT="$FOX_DIR/out/target/product/$DEVICE"
+        mkdir -p "$GITHUB_WORKSPACE/output"
+        cp -v "$OUT"/OrangeFox-*.img "$OUT"/OrangeFox-*.zip "$GITHUB_WORKSPACE/output/" || true
+        [ -f "$OUT/recovery.img" ] && cp -v "$OUT/recovery.img" "$GITHUB_WORKSPACE/output/"
+        ls -lh "$GITHUB_WORKSPACE/output"
+        # partisi recovery = 24MB (25165824 byte)
+        for f in "$GITHUB_WORKSPACE"/output/*.img; do
+          s=$(stat -c%s "$f"); echo "$(basename "$f"): $s byte (max 25165824)"
+          [ "$s" -le 25165824 ] || { echo "::error::$(basename "$f") kegedean buat partisi recovery"; exit 1; }
+        done
+
+    - name: Upload OrangeFox
+      uses: actions/upload-artifact@v4
+      with:
+        name: OrangeFox-A02-64bit
+        path: output/*
+        if-no-files-found: error
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
+        if-no-files-found: ignore
