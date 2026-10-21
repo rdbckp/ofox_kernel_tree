@@ -3,6 +3,7 @@ import /init.recovery.ldconfig.rc
 import /init.recovery.mksh.rc
 import /init.recovery.usb.rc
 import /init.recovery.service.rc
+import /init.recovery.vold_decrypt.rc
 import /init.recovery.${ro.hardware}.rc
 
 on early-init
@@ -38,7 +39,6 @@ on init
     mount cgroup none /acct cpuacct
     mkdir /acct/uid
 
-    mkdir /sdcard
     mkdir /system
     mkdir /data
     symlink /data/cache /cache
@@ -48,8 +48,6 @@ on init
 
     chown root shell /tmp
     chmod 0775 /tmp
-    mkdir /tmp/misc
-    mkdir /tmp/misc/keystore/
 
     write /proc/sys/kernel/panic_on_oops 1
     write /proc/sys/vm/max_map_count 1000000

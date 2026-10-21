@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # build_ofox.sh - Build OrangeFox 12.1 recovery Samsung A02 (MT6739, kernel 64-bit) dari nol sampai jadi .img
+# Kernel: pakai prebuilt/kernel dari twrp_64.img (4.14.186_64 #1). File init: dari TWRP A02 yang sudah jalan.
 # Hasil akhir: $REPO/OrangeFox-a02-new.img (di root repo, *.img lama dihapus), siap di-download dari file manager Codespaces.
 # Jalankan dari root repo device tree:
 #   ./build_ofox.sh            -> semua step berurutan: deps, sync, tree, build
@@ -70,93 +71,134 @@ step_tree() {
   echo "== [3/4] Inject file kustom + patch BoardConfig.mk, sync ke $DEV"
   cd "$REPO" || die "repo tidak ketemu"
   [ -f BoardConfig.mk ] || die "BoardConfig.mk tidak ketemu di $REPO (jalankan script dari root repo device tree)"
+  # file init dari TWRP A02 yang sudah terbukti jalan (reboot normal) dengan kernel 4.14.186_64 #1
   mkdir -p "$(dirname recovery/root/init.recovery.usb.rc)" && cat > recovery/root/init.recovery.usb.rc <<'FIXEOF'
-on boot
-    setprop sys.usb.configfs 1
-    setprop sys.usb.ffs.aio_compat 1
-    setprop vendor.usb.controller "musb-hdrc"
-    setprop vendor.usb.acm_cnt 0
-    start usbfix
+# Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of The Linux Foundation nor
+#       the names of its contributors may be used to endorse or promote
+#       products derived from this software without specific prior written
+#       permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NON-INFRINGEMENT ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
 
-service usbfix /system/bin/sh /system/bin/usbfix.sh
-    disabled
-    user root
-    group root
-    oneshot
-    seclabel u:r:recovery:s0
+on property:ro.boot.usbcontroller=*
+    setprop sys.usb.controller ${ro.boot.usbcontroller}
 
-on property:sys.usb.config=none && property:sys.usb.configfs=1
+on fs
+    mount configfs none /config
+    mkdir /config/usb_gadget/g1 0770 shell shell
+    write /config/usb_gadget/g1/idVendor 0x18D1
+    mkdir /config/usb_gadget/g1/strings/0x409 0770
+    write /config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
+    write /config/usb_gadget/g1/strings/0x409/manufacturer ${ro.product.manufacturer}
+    write /config/usb_gadget/g1/strings/0x409/product ${ro.product.model}
+    mkdir /config/usb_gadget/g1/functions/ffs.adb
+    mkdir /config/usb_gadget/g1/functions/ffs.fastboot
+    mkdir /config/usb_gadget/g1/functions/ffs.mtp
+    mkdir /config/usb_gadget/g1/configs/b.1 0777 shell shell
+    mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
+
+    mkdir /dev/usb-ffs 0775 shell shell
+    mkdir /dev/usb-ffs/adb 0770 shell shell
+    mkdir /dev/usb-ffs/mtp 0770 mtp mtp    
+    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    mkdir /dev/usb-ffs/fastboot 0770 system system
+    mount functionfs fastboot /dev/usb-ffs/fastboot rmode=0770,fmode=0660,uid=1000,gid=1000
+    mount functionfs mtp /dev/usb-ffs/mtp uid=2000,gid=2000
+
+on property:sys.usb.config=adb
+    start adbd
+
+on property:sys.usb.config=mtp,adb
+    start adbd
+
+on property:sys.usb.config=fastboot
+    start fastbootd
+
+# Configfs triggers
+on property:sys.usb.config=none
     write /config/usb_gadget/g1/UDC "none"
+    stop adbd
+    stop fastbootd
+    setprop sys.usb.ffs.ready 0
     rm /config/usb_gadget/g1/configs/b.1/f1
-    rm /config/usb_gadget/g1/configs/b.1/f2
+    rm /config/usb_gadget/g1/configs/b.1/ffs.mtp
+    setprop sys.usb.state ${sys.usb.config}
 
-on property:sys.usb.config=adb && property:sys.usb.configfs=1
-    start adbd
+on property:sys.usb.config=sideload && property:sys.usb.ffs.ready=1
+    write /config/usb_gadget/g1/idProduct 0xD001
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
 
-on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1
-    mkdir /config/usb_gadget/g1/functions/mtp.gs0
-    start adbd
-    wait /dev/usb-ffs/adb/ep2 10
-    write /config/usb_gadget/g1/idVendor 0x04e8
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1
+    write /config/usb_gadget/g1/idProduct 0xD001
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "adb"
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1
     write /config/usb_gadget/g1/idProduct 0x6860
     write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "mtp,adb"
-    symlink /config/usb_gadget/g1/functions/mtp.gs0 /config/usb_gadget/g1/configs/b.1/f1
-    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f2
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    symlink /config/usb_gadget/g1/functions/ffs.mtp /config/usb_gadget/g1/configs/b.1/ffs.mtp
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state ${sys.usb.config}
+
+on property:sys.usb.config=fastboot && property:sys.usb.ffs.ready=1
+    write /config/usb_gadget/g1/idProduct 0xD001
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration "fastboot"
+    symlink /config/usb_gadget/g1/functions/ffs.fastboot /config/usb_gadget/g1/configs/b.1/f1
     write /config/usb_gadget/g1/UDC ${sys.usb.controller}
     setprop sys.usb.state ${sys.usb.config}
 FIXEOF
   mkdir -p "$(dirname recovery/root/init.recovery.mt6739.rc)" && cat > recovery/root/init.recovery.mt6739.rc <<'FIXEOF'
 on init
     setprop sys.usb.configfs 1
-    setprop sys.usb.ffs.aio_compat 1
-    # Force touch sensor biar tetap nyala
-    write /sys/class/sec/tsp/input/enabled 1
+    setprop sys.usb.ffs.aio_compat 0
 
     exec u:r:recovery:s0 -- /sbin/mntl_link
 
 on post-fs-data
-    # Support A/B feature for boot region
+# Support A/B feature for boot region
     symlink /dev/block/mmcblk0boot0 /dev/block/platform/bootdevice/by-name/preloader_a
     symlink /dev/block/mmcblk0boot1 /dev/block/platform/bootdevice/by-name/preloader_b
 
     exec u:r:update_engine:s0 root root -- /system/bin/mtk_plpath_utils
 
-on fs
-    # Set charging free dan inisialisasi USB
-    # cmode 2 = USB disconnect; di-handle usbfix.sh (cmode 1 setelah UDC bind)
-    
-    # Fix MTP Samsung biar kedeteksi di Windows
-    setprop sys.usb.config mtp,adb
-    setprop sys.usb.state mtp,adb
-    
+on fs && property:ro.debuggable=0
+    # distinguish USB shoulde connect or not, i.e. CDP vs SDP
+    write /sys/class/udc/musb-hdrc/device/cmode 2
+    # set charging free due to it wait for USB activation
     start adbd
-
-on boot
-    # Tambahan pemicu buat touchscreen driver Samsung
-    chown system system /sys/class/sec/tsp/cmd
-    chmod 0660 /sys/class/sec/tsp/cmd
-    write /sys/class/sec/tsp/input/enabled 1
 FIXEOF
-  mkdir -p "$(dirname recovery/root/system/bin/usbfix.sh)" && cat > recovery/root/system/bin/usbfix.sh <<'FIXEOF'
-#!/system/bin/sh
-# Jaga gadget tetap ke-bind: adbd restart (service.adb.root) bikin FFS close -> UDC ke-unbind.
-# Tiap UDC kosong dan syarat siap, bind ulang lalu cmode 1 supaya musb kirim event connect.
-G=/config/usb_gadget/g1
-U=/sys/class/udc/musb-hdrc
-L=/tmp/usbfix.log
-echo "usbfix start" > $L
-while true; do
-  if [ "$(getprop sys.usb.config)" = "mtp,adb" ] && [ -e $G/configs/b.1/f1 ] && [ -e $G/configs/b.1/f2 ] && [ -e /dev/usb-ffs/adb/ep2 ]; then
-    if [ -z "$(cat $G/UDC 2>/dev/null)" ]; then
-      echo "$(date +%s) UDC kosong, bind ulang" >> $L
-      echo musb-hdrc > $G/UDC 2>>$L
-      sleep 1
-      echo 1 > $U/device/cmode 2>>$L
-      echo "$(date +%s) state=$(cat $U/state)" >> $L
-    fi
-  fi
-  sleep 1
-done
+  mkdir -p "$(dirname recovery/root/init.recovery.samsung.rc)" && cat > recovery/root/init.recovery.samsung.rc <<'FIXEOF'
+on init
+    # unlink /efs > /mnt/vendor/efs
+    rm /efs
+    mkdir /efs
+    mkdir /sec_efs
 FIXEOF
   mkdir -p "$(dirname recovery/root/system/etc/init/hw/init.rc)" && cat > recovery/root/system/etc/init/hw/init.rc <<'FIXEOF'
 import /init.recovery.logd.rc
@@ -164,6 +206,7 @@ import /init.recovery.ldconfig.rc
 import /init.recovery.mksh.rc
 import /init.recovery.usb.rc
 import /init.recovery.service.rc
+import /init.recovery.vold_decrypt.rc
 import /init.recovery.${ro.hardware}.rc
 
 on early-init
@@ -199,7 +242,6 @@ on init
     mount cgroup none /acct cpuacct
     mkdir /acct/uid
 
-    mkdir /sdcard
     mkdir /system
     mkdir /data
     symlink /data/cache /cache
@@ -209,8 +251,6 @@ on init
 
     chown root shell /tmp
     chmod 0775 /tmp
-    mkdir /tmp/misc
-    mkdir /tmp/misc/keystore/
 
     write /proc/sys/kernel/panic_on_oops 1
     write /proc/sys/vm/max_map_count 1000000
@@ -373,7 +413,7 @@ on property:sys.usb.config=fastboot && property:sys.usb.ffs.ready=1 && property:
     write /config/usb_gadget/g1/UDC ${sys.usb.controller}
     setprop sys.usb.state ${sys.usb.config}
 FIXEOF
-  chmod 755 recovery/root/system/bin/usbfix.sh
+  rm -f recovery/root/system/bin/usbfix.sh
   # patch BoardConfig.mk (idempotent): ramdisk gzip (kernel gak support LZMA), crypto off (device tanpa enkripsi),
   # board C003 + bootopt sesuai img fixed, mount point extra Samsung
   local B=BoardConfig.mk
@@ -383,7 +423,7 @@ FIXEOF
          -e 's/^TW_INCLUDE_FBE_METADATA_DECRYPT/#&/' \
          -e 's/SRPTK19C000SA/SRPTK19C003/' "$B"
   grep -q 'bootopt=' "$B" || sed -i 's/^BOARD_KERNEL_CMDLINE := /BOARD_KERNEL_CMDLINE := bootopt=64S3,32N2,64N2 /' "$B"
-  grep -q 'BOARD_ROOT_EXTRA_FOLDERS' "$B" || echo 'BOARD_ROOT_EXTRA_FOLDERS := efs metadata omr optics prism' >> "$B"
+  sed -i '/^BOARD_ROOT_EXTRA_FOLDERS/d' "$B"
   mkdir -p "$DEV"
   rsync -a --delete --exclude='.git' --exclude='.github' --exclude='/*.sh' --exclude='*.img' --exclude='*.zip' "$REPO/" "$DEV/" || die "rsync gagal"
   grep -nE 'LZMA|CRYPTO|KERNEL_CMDLINE|--board|ROOT_EXTRA' "$B"
@@ -404,6 +444,12 @@ step_build() {
   # yang dipakai nanti hasil repack manual di bawah
   mka adbd recoveryimage -j"${JOBS:-4}" 2>&1 | tee -a "$LOG"
   [ -d "$r/system" ] && [ -f "$o/kernel" ] && [ -f "$o/ramdisk-recovery.img" ] || die "mka gagal sebelum ramdisk jadi (log: $LOG)"
+  # paksa file init TWRP masuk ramdisk (jaga-jaga overlay recovery/root gak menimpa file bawaan OrangeFox)
+  for f in init.recovery.usb.rc init.recovery.mt6739.rc init.recovery.samsung.rc system/etc/init/hw/init.rc; do
+    cp "$DEV/recovery/root/$f" "$r/$f" || die "copy $f gagal"
+  done
+  # prompt shell: jangan pindah ke /tmp tiap shell dibuka
+  sed -i 's|^cd /tmp[[:space:]]*$|cd /|' "$r/system/etc/mkshrc" "$r/FFiles/fox.mkshrc" 2>/dev/null
   # trim ramdisk biar muat partisi: buang lib/binary yang gak ada di img fixed + bahasa selain en/id
   (cd "$r" && rm -f system/lib64/{libicui18n,libicuuc,libandroidicu,libncurses}.so \
       system/lib64/libclang_rt.ubsan_standalone-aarch64-android.so sbin/bash sbin/zip \

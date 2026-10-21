@@ -120,4 +120,3 @@ TW_INPUT_BLACKLIST := "hbtp_vm"
 TW_SUPPORT_INPUT_1_2 := true
 TW_FILTER_TOUCH_EVENTS := true
 TW_EVENT_LOGGING := false
-BOARD_ROOT_EXTRA_FOLDERS := efs metadata omr optics prism
