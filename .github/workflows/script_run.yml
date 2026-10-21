@@ -52,7 +52,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: OrangeFox-A02-64bit
-        path: /home/runner/ofox_output/*
+        path: OrangeFox-a02-new.img
         if-no-files-found: error
 
     - name: Upload build log
