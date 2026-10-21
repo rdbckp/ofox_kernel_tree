@@ -1,0 +1,18 @@
+#
+# ADDITIONAL_DEFAULT_PROPERTIES
+#
+ro.secure=0
+ro.allow.mock.location=1
+ro.debuggable=1
+ro.adb.secure=0
+persist.sys.usb.config=mtp,adb
+
+# Samsung A02 Identity
+ro.product.model=SM-A022F
+ro.product.brand=samsung
+ro.product.device=a02
+ro.product.manufacturer=samsung
+
+# TWRP Tweaks
+ro.tw.disable_init_blank=1
+ro.tw.enable_navbar=1

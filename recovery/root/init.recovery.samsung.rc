@@ -1,0 +1,15 @@
+on init
+    # Setup folder EFS Samsung
+    rm /efs
+    mkdir /efs
+    mkdir /sec_efs
+    
+    # Touchscreen Wakeup Fix
+    chown system system /sys/class/sec/tsp/input/enabled
+    chmod 0660 /sys/class/sec/tsp/input/enabled
+    write /sys/class/sec/tsp/input/enabled 1
+
+on boot
+    # Vibrator/Haptics
+    chown system system /sys/class/timed_output/vibrator/enable
+    chmod 0660 /sys/class/timed_output/vibrator/enable
