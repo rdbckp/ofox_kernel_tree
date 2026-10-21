@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       FOX_BRANCH:
-        description: 'Branch OrangeFox'
+        description: 'Branch OrangeFox (yang sudah dites: 12.1)'
+        type: choice
         required: true
         default: '12.1'
-      FOX_VERSION:
-        description: 'Label versi OrangeFox'
-        required: true
-        default: 'R12.1'
+        options:
+          - '12.1'
+          - '11.0'
+          - '14.1'
 
 jobs:
   build:
@@ -42,7 +43,6 @@ jobs:
     - name: Jalanin build_ofox.sh
       env:
         FOX_BRANCH: ${{ inputs.FOX_BRANCH }}
-        FOX_VERSION: ${{ inputs.FOX_VERSION }}
         FOX_DIR: /mnt/OrangeFox/${{ inputs.FOX_BRANCH }}
       run: |
         chmod +x build_ofox.sh
@@ -51,7 +51,7 @@ jobs:
     - name: Upload OrangeFox
       uses: actions/upload-artifact@v4
       with:
-        name: OrangeFox-A02-64bit
+        name: OrangeFox-A02-64bit-${{ inputs.FOX_BRANCH }}
         path: OrangeFox-a02-new.img
         if-no-files-found: error
 
@@ -59,6 +59,6 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
+        name: build-log-${{ inputs.FOX_BRANCH }}
         path: /home/runner/build_ofox.log
         if-no-files-found: ignore
