@@ -10,8 +10,8 @@ on:
         default: '12.1'
         options:
           - '12.1'
-          - '11.0'
           - '14.1'
+          - '16.0'
 
 jobs:
   build:
