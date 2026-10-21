@@ -1,0 +1,52 @@
+name: Cek branch OrangeFox
+
+on:
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - name: Ambil manifest URL dari script sync
+      run: |
+        git clone --depth=1 https://gitlab.com/OrangeFox/sync.git fox-sync
+        echo "== Referensi gitlab di orangefox_sync.sh"
+        grep -nE "gitlab.com/OrangeFox|manifest|Manifest" fox-sync/orangefox_sync.sh | head -20 || true
+
+    - name: Deteksi branch OrangeFox
+      run: |
+        URL=https://gitlab.com/OrangeFox/Manifest.git
+        git ls-remote --heads "$URL" | tee heads.txt
+        sed -n 's|.*refs/heads/||p' heads.txt | sort -V > all_heads.txt
+        grep -oE '[0-9]+\.[0-9]+$' all_heads.txt | sort -uV > branches.txt || true
+        echo "== Branch kandidat (angka versi):"
+        cat branches.txt
+        [ -s branches.txt ] || { echo "ERROR: gak ada branch ketemu di $URL, cek manifest URL di output step sebelumnya"; exit 1; }
+
+    - name: Ringkasan + blok options siap tempel
+      run: |
+        {
+          echo "## Branch OrangeFox yang terdeteksi"
+          echo
+          echo '```'
+          cat all_heads.txt
+          echo '```'
+          echo
+          echo "Tempel ke \`options:\` di workflow build (script_run.yml):"
+          echo
+          echo '```yaml'
+          echo "        options:"
+          while read -r b; do echo "          - '$b'"; done < branches.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload daftar branch
+      uses: actions/upload-artifact@v4
+      with:
+        name: fox-branches
+        path: |
+          heads.txt
+          branches.txt
